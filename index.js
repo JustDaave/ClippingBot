@@ -152,7 +152,7 @@ bot.command('list', (ctx) => {
 // ======================
 // CRON JOB
 // ======================
-cron.schedule('*/2 * * * *', async () => {
+cron.schedule('*/10 * * * *', async () => {
   console.log("🔄 Checking TikTok accounts...");
 
   const subs = db.prepare(`SELECT * FROM subscriptions`).all();
