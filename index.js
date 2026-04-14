@@ -225,11 +225,11 @@ async function downloadFile(url, targetPath) {
 
 async function createOverlayImage(label, overlayPath) {
   const safeLabel = label.startsWith('@') ? label : `@${label}`;
-  const width = Math.max(240, safeLabel.length * 22 + 56);
+  const width = Math.max(170, safeLabel.length * 18 + 28);
   const svg = `
-    <svg width="${width}" height="88" viewBox="0 0 ${width} 88" xmlns="http://www.w3.org/2000/svg">
-      <rect x="0" y="0" width="${width}" height="88" rx="24" ry="24" fill="white" fill-opacity="0.96" />
-      <text x="${width / 2}" y="56" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" fill="black">${escapeXml(safeLabel)}</text>
+    <svg width="${width}" height="64" viewBox="0 0 ${width} 64" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="${width}" height="64" rx="18" ry="18" fill="white" fill-opacity="0.96" />
+      <text x="${width / 2}" y="42" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="black">${escapeXml(safeLabel)}</text>
     </svg>
   `;
 
@@ -274,7 +274,7 @@ async function prepareVideoForTelegram(chatId, videoUrl) {
       '-y',
       '-i', inputPath,
       '-i', overlayPath,
-      '-filter_complex', '[0:v:0][1:v:0]overlay=20:20:format=auto[v]',
+      '-filter_complex', '[0:v:0][1:v:0]overlay=20:(H-h)*0.62:format=auto[v]',
       '-map', '[v]',
       '-map', '0:a?',
       '-c:v', 'libx264',
@@ -476,7 +476,7 @@ bot.command('setname', (ctx) => {
 // ======================
 // CRON JOB
 // ======================
-cron.schedule('*/1 * * * *', async () => {
+cron.schedule('*/20 * * * *', async () => {
   console.log("🔄 Checking TikTok accounts...");
 
   const subs = db.prepare(`SELECT * FROM subscriptions`).all();
