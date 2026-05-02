@@ -3,6 +3,7 @@ import { execFile } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { promisify } from 'util';
 import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
@@ -19,8 +20,11 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_OVERLAY_FONT_PATH = path.join(MODULE_DIR, 'NotoSans-Bold.ttf');
 const OVERLAY_FONT_CANDIDATES = [
   process.env.OVERLAY_FONT_PATH,
+  PROJECT_OVERLAY_FONT_PATH,
   'C:\\Windows\\Fonts\\arialbd.ttf',
   'C:\\Windows\\Fonts\\arial.ttf',
   '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
@@ -152,8 +156,7 @@ async function getOverlayFont() {
       const fontPath = await findFirstExistingPath(OVERLAY_FONT_CANDIDATES);
 
       if (!fontPath) {
-        console.log('⚠️ No overlay font file found. Falling back to host font resolution.');
-        return null;
+        throw new Error(`No overlay font file found. Checked: ${OVERLAY_FONT_CANDIDATES.join(', ')}`);
       }
 
       const fontBuffer = await fs.readFile(fontPath);
@@ -312,12 +315,11 @@ async function createOverlayImage(label, overlayPath) {
   const safeLabel = label.startsWith('@') ? label : `@${label}`;
   const width = Math.max(170, safeLabel.length * 18 + 28);
   const overlayFont = await getOverlayFont();
-  const fontFamily = overlayFont ? 'ClippingBotOverlay' : 'Arial, Helvetica, sans-serif';
   const svg = `
     <svg width="${width}" height="64" viewBox="0 0 ${width} 64" xmlns="http://www.w3.org/2000/svg">
-      ${overlayFont?.css || ''}
+      ${overlayFont.css}
       <rect x="0" y="0" width="${width}" height="64" rx="18" ry="18" fill="white" fill-opacity="0.96" />
-      <text x="${width / 2}" y="42" text-anchor="middle" font-family="${fontFamily}" font-size="28" font-weight="700" fill="black">${escapeXml(safeLabel)}</text>
+      <text x="${width / 2}" y="42" text-anchor="middle" font-family="ClippingBotOverlay" font-size="28" font-weight="700" fill="black">${escapeXml(safeLabel)}</text>
     </svg>
   `;
 
