@@ -19,6 +19,16 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+const OVERLAY_FONT_CANDIDATES = [
+  process.env.OVERLAY_FONT_PATH,
+  'C:\\Windows\\Fonts\\arialbd.ttf',
+  'C:\\Windows\\Fonts\\arial.ttf',
+  '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
+  '/System/Library/Fonts/Supplemental/Arial.ttf',
+  '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+  '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf',
+  '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'
+].filter(Boolean);
 
 if (!BOT_TOKEN) {
   console.error("❌ Missing BOT_TOKEN in .env");
@@ -88,11 +98,86 @@ function normalizeChatId(value) {
 }
 
 function getChatId(ctx) {
-  return normalizeChatId(ctx.chat.id);
+  return normalizeChatId(ctx.chat?.id ?? ctx.message?.chat?.id ?? ctx.channelPost?.chat?.id);
+}
+
+function getMessageText(ctx) {
+  return ctx.message?.text || ctx.channelPost?.text || ctx.editedMessage?.text || ctx.editedChannelPost?.text || '';
 }
 
 function getCommandArgs(ctx) {
-  return ctx.message?.text?.split(' ').slice(1).join(' ').trim() || '';
+  return getMessageText(ctx).split(' ').slice(1).join(' ').trim();
+}
+
+function getCommandName(ctx) {
+  const text = getMessageText(ctx).trim();
+  const match = text.match(/^\/([A-Za-z0-9_]+)(?:@[A-Za-z0-9_]+)?(?:\s|$)/);
+  return match ? match[1].toLowerCase() : null;
+}
+
+function getFontMimeType(fontPath) {
+  const extension = path.extname(fontPath).toLowerCase();
+
+  switch (extension) {
+    case '.otf':
+      return { mimeType: 'font/otf', format: 'opentype' };
+    case '.woff':
+      return { mimeType: 'font/woff', format: 'woff' };
+    case '.woff2':
+      return { mimeType: 'font/woff2', format: 'woff2' };
+    case '.ttf':
+    default:
+      return { mimeType: 'font/ttf', format: 'truetype' };
+  }
+}
+
+async function findFirstExistingPath(paths) {
+  for (const candidatePath of paths) {
+    try {
+      await fs.access(candidatePath);
+      return candidatePath;
+    } catch {
+      // Continue until a usable font file is found.
+    }
+  }
+
+  return null;
+}
+
+let overlayFontPromise;
+
+async function getOverlayFont() {
+  if (!overlayFontPromise) {
+    overlayFontPromise = (async () => {
+      const fontPath = await findFirstExistingPath(OVERLAY_FONT_CANDIDATES);
+
+      if (!fontPath) {
+        console.log('⚠️ No overlay font file found. Falling back to host font resolution.');
+        return null;
+      }
+
+      const fontBuffer = await fs.readFile(fontPath);
+      const { mimeType, format } = getFontMimeType(fontPath);
+
+      console.log(`🔤 Using overlay font: ${fontPath}`);
+
+      return {
+        fontPath,
+        css: `
+          <style>
+            @font-face {
+              font-family: 'ClippingBotOverlay';
+              src: url("data:${mimeType};base64,${fontBuffer.toString('base64')}") format('${format}');
+              font-weight: 700;
+              font-style: normal;
+            }
+          </style>
+        `
+      };
+    })();
+  }
+
+  return overlayFontPromise;
 }
 
 function extractUsername(input) {
@@ -226,10 +311,13 @@ async function downloadFile(url, targetPath) {
 async function createOverlayImage(label, overlayPath) {
   const safeLabel = label.startsWith('@') ? label : `@${label}`;
   const width = Math.max(170, safeLabel.length * 18 + 28);
+  const overlayFont = await getOverlayFont();
+  const fontFamily = overlayFont ? 'ClippingBotOverlay' : 'Arial, Helvetica, sans-serif';
   const svg = `
     <svg width="${width}" height="64" viewBox="0 0 ${width} 64" xmlns="http://www.w3.org/2000/svg">
+      ${overlayFont?.css || ''}
       <rect x="0" y="0" width="${width}" height="64" rx="18" ry="18" fill="white" fill-opacity="0.96" />
-      <text x="${width / 2}" y="42" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="black">${escapeXml(safeLabel)}</text>
+      <text x="${width / 2}" y="42" text-anchor="middle" font-family="${fontFamily}" font-size="28" font-weight="700" fill="black">${escapeXml(safeLabel)}</text>
     </svg>
   `;
 
@@ -368,7 +456,9 @@ Example:
 `);
 });
 
-bot.command('add', (ctx) => {
+const commandHandlers = {};
+
+commandHandlers.add = (ctx) => {
   const input = getCommandArgs(ctx);
   const username = extractUsername(input);
   const chatId = getChatId(ctx);
@@ -387,9 +477,9 @@ bot.command('add', (ctx) => {
       ctx.reply("❌ Error adding subscription");
     }
   }
-});
+};
 
-bot.command('remove', (ctx) => {
+commandHandlers.remove = (ctx) => {
   const input = getCommandArgs(ctx);
   const username = extractUsername(input);
   const chatId = getChatId(ctx);
@@ -406,9 +496,9 @@ bot.command('remove', (ctx) => {
   } else {
     ctx.reply(`⚠️ Not subscribed to @${username}`);
   }
-});
+};
 
-bot.command('list', (ctx) => {
+commandHandlers.list = (ctx) => {
   const subs = db.prepare(`
     SELECT username FROM subscriptions WHERE chat_id = ?
   `).all(getChatId(ctx));
@@ -417,9 +507,9 @@ bot.command('list', (ctx) => {
 
   const list = subs.map(s => `• @${s.username}`).join('\n');
   ctx.reply(`📋 Your subscriptions:\n${list}`);
-});
+};
 
-bot.command('addcaption', (ctx) => {
+commandHandlers.addcaption = (ctx) => {
   const template = getCommandArgs(ctx);
 
   if (!template) {
@@ -430,9 +520,9 @@ bot.command('addcaption', (ctx) => {
     .run(getChatId(ctx), template);
 
   ctx.reply('✅ Caption template added for this chat.');
-});
+};
 
-bot.command('captions', (ctx) => {
+commandHandlers.captions = (ctx) => {
   const templates = db.prepare(`
     SELECT id, template
     FROM caption_templates
@@ -449,9 +539,9 @@ bot.command('captions', (ctx) => {
     .join('\n\n');
 
   ctx.reply(`🧠 Caption templates for this chat:\n\n${message}`);
-});
+};
 
-bot.command('setname', (ctx) => {
+commandHandlers.setname = (ctx) => {
   const rawName = getCommandArgs(ctx);
 
   if (!rawName) {
@@ -471,6 +561,21 @@ bot.command('setname', (ctx) => {
 
   setOverlayName(getChatId(ctx), normalizedName);
   ctx.reply(`✅ Overlay name set to @${normalizedName} for this chat.`);
+};
+
+for (const [command, handler] of Object.entries(commandHandlers)) {
+  bot.command(command, handler);
+}
+
+bot.on('channel_post', (ctx, next) => {
+  const command = getCommandName(ctx);
+  const handler = command ? commandHandlers[command] : null;
+
+  if (!handler) {
+    return next();
+  }
+
+  return handler(ctx);
 });
 
 // ======================
@@ -522,7 +627,9 @@ cron.schedule('*/20 * * * *', async () => {
 // ======================
 // START BOT
 // ======================
-bot.launch();
+bot.launch({
+  allowedUpdates: ['message', 'channel_post']
+});
 console.log("🚀 Bot is running...");
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
