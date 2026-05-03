@@ -21,18 +21,7 @@ const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_OVERLAY_FONT_PATH = path.join(MODULE_DIR, 'NotoSans-Bold.ttf');
-const OVERLAY_FONT_CANDIDATES = [
-  process.env.OVERLAY_FONT_PATH,
-  PROJECT_OVERLAY_FONT_PATH,
-  'C:\\Windows\\Fonts\\arialbd.ttf',
-  'C:\\Windows\\Fonts\\arial.ttf',
-  '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
-  '/System/Library/Fonts/Supplemental/Arial.ttf',
-  '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-  '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf',
-  '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'
-].filter(Boolean);
+const OVERLAY_FONT_PATH = path.join(MODULE_DIR, 'NotoSans-Bold.ttf');
 
 if (!BOT_TOKEN) {
   console.error("❌ Missing BOT_TOKEN in .env");
@@ -153,19 +142,19 @@ let overlayFontPromise;
 async function getOverlayFont() {
   if (!overlayFontPromise) {
     overlayFontPromise = (async () => {
-      const fontPath = await findFirstExistingPath(OVERLAY_FONT_CANDIDATES);
-
-      if (!fontPath) {
-        throw new Error(`No overlay font file found. Checked: ${OVERLAY_FONT_CANDIDATES.join(', ')}`);
+      try {
+        await fs.access(OVERLAY_FONT_PATH);
+      } catch {
+        throw new Error(`Bundled overlay font is missing: ${OVERLAY_FONT_PATH}`);
       }
 
-      const fontBuffer = await fs.readFile(fontPath);
-      const { mimeType, format } = getFontMimeType(fontPath);
+      const fontBuffer = await fs.readFile(OVERLAY_FONT_PATH);
+      const { mimeType, format } = getFontMimeType(OVERLAY_FONT_PATH);
 
-      console.log(`🔤 Using overlay font: ${fontPath}`);
+      console.log(`🔤 Using overlay font: ${OVERLAY_FONT_PATH}`);
 
       return {
-        fontPath,
+        fontPath: OVERLAY_FONT_PATH,
         css: `
           <style>
             @font-face {
