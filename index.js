@@ -22,6 +22,15 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const OVERLAY_FONT_PATH = path.join(MODULE_DIR, 'NotoSans-Bold.ttf');
+const FONTCONFIG_FILE_PATH = path.join(MODULE_DIR, 'fonts.conf');
+
+if (!process.env.FONTCONFIG_FILE) {
+  process.env.FONTCONFIG_FILE = FONTCONFIG_FILE_PATH;
+}
+
+if (!process.env.FONTCONFIG_PATH) {
+  process.env.FONTCONFIG_PATH = MODULE_DIR;
+}
 
 if (!BOT_TOKEN) {
   console.error("❌ Missing BOT_TOKEN in .env");
@@ -143,6 +152,12 @@ async function getOverlayFont() {
   if (!overlayFontPromise) {
     overlayFontPromise = (async () => {
       try {
+        await fs.access(process.env.FONTCONFIG_FILE || FONTCONFIG_FILE_PATH);
+      } catch {
+        console.log(`⚠️ Fontconfig file not found at ${process.env.FONTCONFIG_FILE || FONTCONFIG_FILE_PATH}`);
+      }
+
+      try {
         await fs.access(OVERLAY_FONT_PATH);
       } catch {
         throw new Error(`Bundled overlay font is missing: ${OVERLAY_FONT_PATH}`);
@@ -152,6 +167,7 @@ async function getOverlayFont() {
       const { mimeType, format } = getFontMimeType(OVERLAY_FONT_PATH);
 
       console.log(`🔤 Using overlay font: ${OVERLAY_FONT_PATH}`);
+      console.log(`🔤 Using Fontconfig file: ${process.env.FONTCONFIG_FILE}`);
 
       return {
         fontPath: OVERLAY_FONT_PATH,
